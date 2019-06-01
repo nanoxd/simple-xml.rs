@@ -48,17 +48,17 @@ fn identifier(input: &str) -> ParseResult<String> {
     Ok((&input[next_index..], matched))
 }
 
-fn pair<P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Fn(&str) -> ParseResult<(R1, R2)>
+fn pair<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, (R1, R2)>
 where
-    P1: Fn(&str) -> ParseResult<R1>,
-    P2: Fn(&str) -> ParseResult<R2>,
+    P1: Parser<'a, R1>,
+    P2: Parser<'a, R2>,
 {
-    move |input| match parser1(input) {
-        Ok((next_input, result1)) => match parser2(next_input) {
-            Ok((final_input, result2)) => Ok((final_input, (result1, result2))),
-            Err(err) => Err(err),
-        },
-        Err(err) => Err(err),
+    move |input| {
+        parser1.parse(input).and_then(|(next_input, result1)| {
+            parser2
+                .parse(next_input)
+                .map(|(last_input, result2)| (last_input, (result1, result2)))
+        })
     }
 }
 
@@ -112,9 +112,9 @@ mod tests {
         let tag_opener = pair(match_literal("<"), identifier);
         assert_eq!(
             Ok(("/>", ((), "yoohoo".to_string()))),
-            tag_opener("<yoohoo/>")
+            tag_opener.parse("<yoohoo/>")
         );
-        assert_eq!(Err("oops"), tag_opener("oops"));
-        assert_eq!(Err("!oops"), tag_opener("<!oops"));
+        assert_eq!(Err("oops"), tag_opener.parse("oops"));
+        assert_eq!(Err("!oops"), tag_opener.parse("<!oops"));
     }
 }
