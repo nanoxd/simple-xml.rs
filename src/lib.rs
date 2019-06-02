@@ -27,6 +27,13 @@ fn match_literal<'a>(expected: &'static str) -> impl Parser<'a, ()> {
     }
 }
 
+fn any_char(input: &str) -> ParseResult<char> {
+    match input.chars().next() {
+        Some(next) => Ok((&input[next.len_utf8()..], next)),
+        _ => Err(input),
+    }
+}
+
 fn identifier(input: &str) -> ParseResult<String> {
     let mut matched = String::new();
     let mut chars = input.chars();
@@ -129,6 +136,22 @@ where
     }
 }
 
+fn pred<'a, P, A, F>(parser: P, predicate: F) -> impl Parser<'a, A>
+where
+    P: Parser<'a, A>,
+    F: Fn(&A) -> bool,
+{
+    move |input| {
+        if let Ok((next_input, value)) = parser.parse(input) {
+            if predicate(&value) {
+                return Ok((next_input, value));
+            }
+        }
+
+        Err(input)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,5 +221,12 @@ mod tests {
         assert_eq!(Ok(("", vec![(), (), ()])), parser.parse("yoyoyo"));
         assert_eq!(Ok(("ayay", vec![])), parser.parse("ayay"));
         assert_eq!(Ok(("", vec![])), parser.parse(""));
+    }
+
+    #[test]
+    fn predicate_combinator() {
+        let parser = pred(any_char, |c| *c == 'o');
+        assert_eq!(Ok(("mg", 'o')), parser.parse("omg"));
+        assert_eq!(Err("lol"), parser.parse("lol"));
     }
 }
