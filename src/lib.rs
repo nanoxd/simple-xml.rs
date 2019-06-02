@@ -4,6 +4,25 @@ type ParseResult<'a, Output> = Result<(&'a str, Output), &'a str>;
 
 trait Parser<'a, Output> {
     fn parse(&self, input: &'a str) -> ParseResult<'a, Output>;
+
+    fn map<F, NewOutput>(self, map_fn: F) -> BoxedParser<'a, NewOutput>
+    where
+        Self: Sized + 'a,
+        Output: 'a,
+        NewOutput: 'a,
+        F: Fn(Output) -> NewOutput + 'a,
+    {
+        BoxedParser::new(map(self, map_fn))
+    }
+
+    fn pred<F>(self, pred_fn: F) -> BoxedParser<'a, Output>
+    where
+        Self: Sized + 'a,
+        Output: 'a,
+        F: Fn(&Output) -> bool + 'a,
+    {
+        BoxedParser::new(pred(self, pred_fn))
+    }
 }
 
 impl<'a, F, Output> Parser<'a, Output> for F
@@ -34,12 +53,12 @@ struct BoxedParser<'a, Output> {
 impl<'a, Output> BoxedParser<'a, Output> {
     fn new<P>(parser: P) -> Self
     where
-        P: Parser<'a, Output> + 'a, 
-        {
-            BoxedParser {
-                parser: Box::new(parser)
-            }
+        P: Parser<'a, Output> + 'a,
+    {
+        BoxedParser {
+            parser: Box::new(parser),
         }
+    }
 }
 
 impl<'a, Output> Parser<'a, Output> for BoxedParser<'a, Output> {
@@ -193,16 +212,14 @@ fn space0<'a>() -> impl Parser<'a, Vec<char>> {
 }
 
 fn quoted_string<'a>() -> impl Parser<'a, String> {
-    map(
-        right(
+    right(
+        match_literal("\""),
+        left(
+            zero_or_more(any_char.pred(|c| *c != '"')),
             match_literal("\""),
-            left(
-                zero_or_more(pred(any_char, |c| *c != '"')),
-                match_literal("\""),
-            ),
         ),
-        |chars| chars.into_iter().collect(),
     )
+    .map(|chars| chars.into_iter().collect())
 }
 
 fn attribute_pair<'a>() -> impl Parser<'a, (String, String)> {
